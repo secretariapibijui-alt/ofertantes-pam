@@ -10,7 +10,7 @@
     table { border-collapse: collapse; width: 100%; margin-top: 20px; }
     th, td { border: 1px solid #ccc; padding: 6px; }
     th { cursor: pointer; user-select: none; }
-    #grafico { width: 400px; height: 300px; }
+    #grafico { width: 100%; max-width: 400px; height: 300px; }
     .linha { display: flex; gap: 30px; align-items: flex-start; }
     .painel-esq { flex: 2; overflow: auto; }
     .painel-dir { flex: 1; min-width: 320px; }
@@ -25,142 +25,236 @@
 </head>
 <body>
 
-<h1>Cadastro de Ofertantes</h1>
-<div id="pagina1">
-  <div class="campo"><label>Nome:</label><input type="text" id="nome" /></div>
-  <div class="campo"><label>Mês:</label><input type="text" id="mes" placeholder="Ex: 03" /></div>
-  <div class="campo"><label>Ano:</label><input type="text" id="ano" placeholder="Ex: 2025" /></div>
+  <h1>Cadastro de Ofertantes</h1>
+  <div id="pagina1">
+    <div class="campo">
+      <label>Nome:</label>
+      <input type="text" id="nome" />
+    </div>
 
-  <h3>Campos e valores</h3>
-  <div id="campos-container"></div>
+    <div class="campo">
+      <label>Mês:</label>
+      <input type="text" id="mes" placeholder="Ex: 03" />
+    </div>
 
-  <div class="campo"><label>Forma de pagamento:</label><input type="text" id="pagamento" /></div>
+    <div class="campo">
+      <label>Ano:</label>
+      <input type="text" id="ano" placeholder="Ex: 2025" />
+    </div>
 
-  <div class="acoes">
-    <button onclick="salvarRegistro()">Salvar</button>
-    <button onclick="abrirPagina2()">Ver Registros</button>
+    <h3>Campos e valores</h3>
+
+    <div id="campos-container"></div>
+
+    <div class="campo">
+      <label>Forma de pagamento:</label>
+      <input type="text" id="pagamento" />
+    </div>
+
+    <div class="acoes">
+      <button onclick="salvarRegistro()">Salvar</button>
+      <button onclick="abrirPagina2()">Ver Registros</button>
+    </div>
   </div>
-</div>
 
-<div id="pagina2" style="display:none;">
-  <button onclick="abrirPagina1()">Voltar</button>
-  <h1>Registros</h1>
+  <div id="pagina2" style="display:none;">
+    <button onclick="abrirPagina1()">Voltar</button>
+    <h1>Registros</h1>
 
-  <div class="campo"><label>Filtrar:</label><input type="text" id="filtro" oninput="renderizarTabela()"></div>
+    <div class="campo">
+      <label>Filtrar:</label>
+      <input type="text" id="filtro" oninput="renderizarTabela()" placeholder="Nome, campo, valor, pagamento, mes/ano..." />
+    </div>
 
-  <div class="linha">
-    <div class="painel-esq"><table id="tabela"></table></div>
-    <div class="painel-dir"><h3>Total por campo</h3><div id="resumo"></div><h3>Gráfico</h3><canvas id="grafico" width="400" height="300"></canvas></div>
+    <div class="linha">
+      <div class="painel-esq">
+        <table id="tabela"></table>
+      </div>
+      <div class="painel-dir">
+        <h3>Total por campo</h3>
+        <div id="resumo"></div>
+        <h3>Gráfico</h3>
+        <canvas id="grafico" width="400" height="300"></canvas>
+      </div>
+    </div>
   </div>
-</div>
 
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-
-const firebaseConfig = {
-  apiKey: "COLOQUE_AQUI",
-  authDomain: "COLOQUE_AQUI",
-  projectId: "COLOQUE_AQUI",
-  storageBucket: "COLOQUE_AQUI",
-  messagingSenderId: "COLOQUE_AQUI",
-  appId: "COLOQUE_AQUI"
-};
-
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-
 const CAMPOS = [
-  'Campus Thomé','Exu/PE (JMN)','Itapema/SC (JEVAM)','Itapiranga/SC','Moçambique (JMN)','Cuba (EBM)','Alemanha'
+  'Campus Thomé',
+  'Exu/PE (JMN)',
+  'Itapema/SC (JEVAM)',
+  'Itapiranga/SC',
+  'Moçambique (JMN)',
+  'Cuba (EBM)',
+  'Alemanha'
 ];
+
+let registros = JSON.parse(localStorage.getItem('registros') || '[]');
+let ultimoMes = localStorage.getItem('ultimoMes');
+let ultimoAno = localStorage.getItem('ultimoAno');
 
 let criterioOrdenacao = null;
 let ordemAsc = true;
-let registros = [];
 
-function montarCampos(){
-  const box=document.getElementById('campos-container'); box.innerHTML='';
-  CAMPOS.forEach(c=>{
-    const id=`valor_${c.replace(/[^a-zA-Z0-9_-]/g,'_')}`;
-    box.innerHTML+=`<div class='campo'><label>${c}</label><input type='number' id='${id}' step='0.01' min='0'></div>`;
+function montarCampos() {
+  const box = document.getElementById('campos-container');
+  box.innerHTML = '';
+  CAMPOS.forEach(c => {
+    // id-safe (remove/replace chars that break id)
+    const id = `valor_${c.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+    box.innerHTML += `\n      <div class='campo'>\n        <label>${c}</label>\n        <input type='number' id='${id}' step='0.01' min='0' />\n      </div>`;
   });
+
+  if (ultimoMes) document.getElementById('mes').value = ultimoMes;
+  if (ultimoAno) document.getElementById('ano').value = ultimoAno;
 }
 
-async function salvarRegistro(){
-  const nome=document.getElementById('nome').value.trim();
-  const mes=document.getElementById('mes').value.trim();
-  const ano=document.getElementById('ano').value.trim();
-  const pagamento=document.getElementById('pagamento').value.trim();
-  if(!nome||!mes||!ano){alert('Preencha todos os campos');return;}
+function salvarRegistro() {
+  const nome = document.getElementById('nome').value.trim();
+  const mes = document.getElementById('mes').value.trim();
+  const ano = document.getElementById('ano').value.trim();
+  const pagamento = document.getElementById('pagamento').value.trim();
 
-  const ofertas={};
-  CAMPOS.forEach(c=>{
-    const id=`valor_${c.replace(/[^a-zA-Z0-9_-]/g,'_')}`;
-    const v=Number(document.getElementById(id).value)||0;
-    if(v>0) ofertas[c]=v;
+  if (!nome) { alert('Preencha o nome.'); return; }
+  if (!mes || !ano) { alert('Preencha mês e ano.'); return; }
+
+  const ofertas = {};
+  CAMPOS.forEach(c => {
+    const id = `valor_${c.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+    const v = Number(document.getElementById(id).value) || 0;
+    if (v > 0) ofertas[c] = v;
   });
 
-  await db.collection('ofertas').add({nome,mes,ano,pagamento,ofertas,timestamp:Date.now()});
+  registros.push({ nome, mes, ano, pagamento, ofertas });
 
-  document.getElementById('nome').value='';
-  document.getElementById('pagamento').value='';
-  CAMPOS.forEach(c=>{document.getElementById(`valor_${c.replace(/[^a-zA-Z0-9_-]/g,'_')}`).value='';});
+  localStorage.setItem('registros', JSON.stringify(registros));
+  localStorage.setItem('ultimoMes', mes);
+  localStorage.setItem('ultimoAno', ano);
+
+  // limpar campos para próximo registro, mantendo mês/ano
+  document.getElementById('nome').value = '';
+  document.getElementById('pagamento').value = '';
+  CAMPOS.forEach(c => {
+    const id = `valor_${c.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+    document.getElementById(id).value = '';
+  });
 
   alert('Registro salvo');
 }
 
-async function carregarRegistros(){
-  const snap = await db.collection('ofertas').orderBy('timestamp','asc').get();
-  registros = snap.docs.map(d=>d.data());
+function abrirPagina2() {
+  document.getElementById('pagina1').style.display = 'none';
+  document.getElementById('pagina2').style.display = '';
   renderizarTabela();
 }
 
-function abrirPagina2(){ document.getElementById('pagina1').style.display='none'; document.getElementById('pagina2').style.display=''; carregarRegistros(); }
-function abrirPagina1(){ document.getElementById('pagina2').style.display='none'; document.getElementById('pagina1').style.display=''; }
+function abrirPagina1() {
+  document.getElementById('pagina2').style.display = 'none';
+  document.getElementById('pagina1').style.display = '';
+}
 
-function renderizarTabela(){
-  const filtro=(document.getElementById('filtro').value||'').toLowerCase();
-  const tabela=document.getElementById('tabela');
-  tabela.innerHTML=`<tr><th onclick="ordenar('nome')">Nome</th><th onclick="ordenar('mesano')">Mês/Ano</th><th onclick="ordenar('campo')">Campo</th><th onclick="ordenar('valor')">Valor</th><th onclick="ordenar('pagamento')">Pagamento</th></tr>`;
+function renderizarTabela() {
+  const filtro = (document.getElementById('filtro').value || '').toLowerCase();
+  const tabela = document.getElementById('tabela');
+  tabela.innerHTML = `<tr>
+<th onclick="ordenar('nome')">Nome</th>
+<th onclick="ordenar('mesano')">Mês/Ano</th>
+<th onclick="ordenar('campo')">Campo</th>
+<th onclick="ordenar('valor')">Valor</th>
+<th onclick="ordenar('pagamento')">Pagamento</th>
+</tr>`;
 
-  const lista = registros.flatMap(r=>Object.entries(r.ofertas||{}).map(([campo,valor])=>({nome:r.nome,mesano:`${r.mes}/${r.ano}`,campo,valor,pagamento:r.pagamento})));
+  // Criar lista plana: cada oferta vira uma linha
+  const lista = registros.flatMap(r => {
+    return Object.entries(r.ofertas || {})
+      .filter(([, valor]) => Number(valor) > 0)
+      .map(([campo, valor]) => ({
+        nome: r.nome,
+        mesano: `${r.mes}/${r.ano}`,
+        campo,
+        valor: Number(valor),
+        pagamento: r.pagamento
+      }));
+  });
 
-  let filtrados = lista.filter(i=>Object.values(i).join(' ').toLowerCase().includes(filtro));
+  // aplicar filtro
+  let filtrados = lista.filter(item => {
+    return Object.values(item).join(' ').toLowerCase().includes(filtro);
+  });
 
-  if(criterioOrdenacao){
-    filtrados.sort((a,b)=>{
-      let x=a[criterioOrdenacao], y=b[criterioOrdenacao];
-      if(criterioOrdenacao==='valor'){x=Number(x);y=Number(y);} return ordemAsc?(x>y?1:-1):(x<y?1:-1);
+  // ordenar
+  if (criterioOrdenacao) {
+    filtrados.sort((a, b) => {
+      let x = a[criterioOrdenacao];
+      let y = b[criterioOrdenacao];
+      if (criterioOrdenacao === 'valor') { x = Number(x); y = Number(y); }
+      if (x === y) return 0;
+      return ordemAsc ? (x > y ? 1 : -1) : (x < y ? 1 : -1);
     });
   }
 
-  const totais={};
-  filtrados.forEach(r=>{
-    totais[r.campo]=(totais[r.campo]||0)+Number(r.valor||0);
-    tabela.innerHTML+=`<tr><td>${r.nome}</td><td>${r.mesano}</td><td>${r.campo}</td><td>${Number(r.valor).toFixed(2)}</td><td>${r.pagamento}</td></tr>`;
+  // calcular totais por campo (apenas do conjunto filtrado)
+  const totais = {};
+  filtrados.forEach(r => {
+    totais[r.campo] = (totais[r.campo] || 0) + Number(r.valor || 0);
+    tabela.innerHTML += `\n      <tr>\n        <td>${escapeHtml(r.nome)}</td>\n        <td>${escapeHtml(r.mesano)}</td>\n        <td>${escapeHtml(r.campo)}</td>\n        <td>${Number(r.valor).toFixed(2)}</td>\n        <td>${escapeHtml(r.pagamento || '')}</td>\n      </tr>`;
   });
 
   mostrarResumo(totais);
   desenharGrafico(totais);
 }
 
-function mostrarResumo(t){
-  const box=document.getElementById('resumo'); box.innerHTML='';
-  Object.keys(t).forEach(c=>{box.innerHTML+=`${c}: R$ ${t[c].toFixed(2)}<br>`;});
+function mostrarResumo(totais) {
+  const box = document.getElementById('resumo');
+  box.innerHTML = '';
+  const camposOrdenados = Object.keys(totais);
+  if (camposOrdenados.length === 0) box.innerHTML = 'Nenhum registro para exibir.';
+  camposOrdenados.forEach(c => {
+    box.innerHTML += `${c}: R$ ${totais[c].toFixed(2)}<br>`;
+  });
 }
 
-function desenharGrafico(t){
-  const ctx=document.getElementById('grafico');
-  const labels=Object.keys(t);
-  const valores=Object.values(t);
-  if(window.graficoObj) window.graficoObj.destroy();
-  window.graficoObj=new Chart(ctx,{type:'bar',data:{labels,datasets:[{data:valores,label:'Total por campo'}]},options:{responsive:true,maintainAspectRatio:true}});
+function desenharGrafico(totais) {
+  const ctx = document.getElementById('grafico');
+  const labels = Object.keys(totais);
+  const valores = Object.values(totais).map(v => Number(v));
+
+  if (window.graficoObj) window.graficoObj.destroy();
+
+  window.graficoObj = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{ data: valores, label: 'Total por campo' }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true
+    }
+  });
 }
 
-function ordenar(campo){ criterioOrdenacao===campo?ordemAsc=!ordemAsc:(criterioOrdenacao=campo,ordemAsc=true); renderizarTabela(); }
+function ordenar(campo) {
+  if (criterioOrdenacao === campo) {
+    ordemAsc = !ordemAsc;
+  } else {
+    criterioOrdenacao = campo;
+    ordemAsc = true;
+  }
+  renderizarTabela();
+}
+
+function escapeHtml(text) {
+  if (text === undefined || text === null) return '';
+  return String(text).replace(/[&<>"'`]/g, s => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;'
+  })[s]);
+}
 
 montarCampos();
 </script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 </body>
 </html>
